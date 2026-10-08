@@ -8,8 +8,8 @@
 #
 
 SCRIPT_NAME="Ubuntu Server Update Audit"
-SCRIPT_VERSION="1.7.2"
-SCRIPT_DATE="2026-10-02"
+SCRIPT_VERSION="1.7.3"
+SCRIPT_DATE="2026-10-08"
 SCRIPT_TARGETS="Ubuntu Server 22.04 / 24.04 / 26.04 LTS"
 # ubuntu-update-check.sh
 # Read-only audit for Ubuntu Server 22.04 LTS / 24.04 LTS / 26.04 LTS.
@@ -166,7 +166,9 @@ case "${VERSION_ID:-}" in
 esac
 
 head1 "Unattended Upgrades"
+UU_INSTALLED=0
 if dpkg-query -W -f='${Status}' unattended-upgrades 2>/dev/null | grep -q 'install ok installed'; then
+  UU_INSTALLED=1
   ok "Paket unattended-upgrades ist installiert ($(dpkg-query -W -f='${Version}' unattended-upgrades 2>/dev/null))"
 else
   bad "Paket unattended-upgrades ist nicht installiert"
@@ -282,34 +284,50 @@ else
 fi
 
 head1 "Effektive Update-Policy"
-if [[ "$periodic" == "1" ]]; then
-  ok "unattended-upgrades wird täglich ausgeführt"
+if [[ "$UU_INSTALLED" != "1" ]]; then
+  printf "%s[INAKTIV]%s unattended-upgrades nicht verfügbar: Paket ist nicht installiert\n" "$R" "$N"
+  if [[ "$periodic" == "1" ]]; then
+    info "APT::Periodic::Unattended-Upgrade=1 ist konfiguriert, kann aber ohne unattended-upgrades nicht ausgeführt werden"
+  else
+    info "APT::Periodic::Unattended-Upgrade=${periodic:-nicht gesetzt}"
+  fi
+  warn "Ubuntu Security Updates: automatische Installation nicht prüfbar"
+  info "Normale Ubuntu Updates (*-updates): automatische Installation nicht prüfbar"
+  info "Ubuntu Kernel-Updates: automatische unattended-upgrades-Policy nicht prüfbar"
 else
-  printf "%s[INAKTIV]%s unattended-upgrades ist nicht täglich aktiviert\n" "$R" "$N"
+  if [[ "$periodic" == "1" ]]; then
+    ok "unattended-upgrades wird täglich ausgeführt"
+  else
+    printf "%s[INAKTIV]%s unattended-upgrades ist nicht täglich aktiviert\n" "$R" "$N"
+  fi
+
+  if [[ -n "${allowed:-}" ]] && grep -q "a=${VERSION_CODENAME:-}-security" <<<"$allowed"; then
+    ok "Ubuntu Security Updates: automatisch erlaubt"
+  else
+    warn "Ubuntu Security Updates: nicht eindeutig automatisch erlaubt"
+  fi
+  if [[ -n "${allowed:-}" ]] && grep -q "a=${VERSION_CODENAME:-}-updates" <<<"$allowed"; then
+    ok "Normale Ubuntu Updates (*-updates): automatisch erlaubt"
+    ok "Reguläre Ubuntu Kernel-Updates aus *-updates: automatisch erlaubt (sofern nicht per Paket-Blacklist ausgeschlossen)"
+  else
+    info "Normale Ubuntu Updates (*-updates): nicht automatisch erlaubt"
+    info "Reguläre Kernel-Updates aus *-updates: nicht automatisch erlaubt; Security-Kernelupdates können weiterhin über *-security erlaubt sein"
+  fi
 fi
 
-if [[ -n "${allowed:-}" ]] && grep -q "a=${VERSION_CODENAME:-}-security" <<<"$allowed"; then
-  ok "Ubuntu Security Updates: automatisch erlaubt"
-else
-  warn "Ubuntu Security Updates: nicht eindeutig automatisch erlaubt"
-fi
-if [[ -n "${allowed:-}" ]] && grep -q "a=${VERSION_CODENAME:-}-updates" <<<"$allowed"; then
-  ok "Normale Ubuntu Updates (*-updates): automatisch erlaubt"
-  ok "Ubuntu Kernel-Updates aus *-updates: automatisch erlaubt (sofern nicht per Paket-Blacklist ausgeschlossen)"
-else
-  info "Normale Ubuntu Updates (*-updates): nicht automatisch erlaubt"
-  info "Ubuntu Kernel-Updates aus *-updates: damit ebenfalls nicht allgemein automatisch erlaubt"
-fi
 if [[ "$ESM_APPS" == "1" || "$ESM_INFRA" == "1" ]]; then
   ok "Ubuntu Pro / ESM: mindestens ein ESM-Dienst aktiv"
 else
   info "Ubuntu Pro / ESM: nicht aktiv; ESM-exklusive Updates werden nicht installiert"
 fi
+
 if [[ "$reboot" == "true" ]]; then
   ok "Automatischer Reboot bei Bedarf: aktiv (${reboot_time:-Zeit nicht gesetzt})"
   [[ "$reboot_users" == "false" ]] && info "Automatischer Reboot wird bei angemeldeten Benutzern nicht erzwungen"
-else
+elif [[ "$reboot" == "false" ]]; then
   info "Automatischer Reboot bei Bedarf: deaktiviert"
+else
+  info "Automatischer Reboot bei Bedarf: nicht konfiguriert"
 fi
 
 repo_sites="$(apt-get indextargets --format '$(SITE)' 2>/dev/null | sort -u || true)"
@@ -458,8 +476,23 @@ kv "Fehler" "$AUDIT_ERRORS"
 kv "Warnungen" "$AUDIT_WARNINGS"
 kv "Inaktive Funktionen" "$AUDIT_INACTIVE"
 kv "Reboot erforderlich" "$([[ "$AUDIT_REBOOT" -gt 0 ]] && echo ja || echo nein)"
-kv "Auto-Reboot Policy" "$([[ "$reboot" == "true" ]] && echo aktiv || echo inaktiv)"
-kv "Ubuntu *-updates" "$([[ -n "${allowed:-}" ]] && grep -q "a=${VERSION_CODENAME:-}-updates" <<<"$allowed" && echo automatisch || echo nicht automatisch)"
+if [[ "$reboot" == "true" ]]; then
+  auto_reboot_summary="aktiv"
+elif [[ "$reboot" == "false" ]]; then
+  auto_reboot_summary="inaktiv"
+else
+  auto_reboot_summary="nicht konfiguriert"
+fi
+kv "Auto-Reboot Policy" "$auto_reboot_summary"
+
+if [[ "$UU_INSTALLED" != "1" ]]; then
+  updates_summary="nicht prüfbar"
+elif [[ -n "${allowed:-}" ]] && grep -q "a=${VERSION_CODENAME:-}-updates" <<<"$allowed"; then
+  updates_summary="automatisch"
+else
+  updates_summary="nicht automatisch"
+fi
+kv "Ubuntu *-updates" "$updates_summary"
 kv "Ubuntu Pro / ESM" "$([[ "$ESM_APPS" == "1" || "$ESM_INFRA" == "1" ]] && echo aktiv || echo nicht aktiv)"
 
 if (( AUDIT_ERRORS > 0 )); then
