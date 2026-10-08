@@ -1,9 +1,9 @@
 # Ubuntu Server Update Audit
 
-**Script-Version:** 1.7.2
-**Stand:** 2026-10-02
+**Script-Version:** 1.7.3
+**Stand:** 2026-10-08
 
-**Dokumentationsstand:** v1.7.2
+**Release:** v1.7.3
 
 Read-only Prüfscript für Ubuntu Server **22.04 LTS**, **24.04 LTS** und
 **26.04 LTS**. Es kontrolliert automatische Sicherheitsupdates,
@@ -506,3 +506,13 @@ automatische Auswahl wird zusätzlich der
 Wenn das Audit einen erforderlichen Neustart meldet, sollte insbesondere
 geprüft werden, ob der laufende Kernel älter als das höchste
 installierte Kernel-Image ist.
+
+### v1.7.3
+
+- Script und README gemeinsam auf v1.7.3 aktualisiert.
+- Policy-Auswertung korrigiert, wenn `APT::Periodic::Unattended-Upgrade=1` gesetzt ist, das Paket `unattended-upgrades` aber fehlt.
+- In diesem Zustand wird nicht mehr fälschlich `[AKTIV] unattended-upgrades wird täglich ausgeführt` gemeldet.
+- Security-, normale Ubuntu- und Kernel-Automatik werden bei fehlendem `unattended-upgrades` als **nicht prüfbar** ausgewiesen.
+- Zusammenfassung zeigt `Ubuntu *-updates: nicht prüfbar`, wenn das Paket fehlt.
+- Auto-Reboot unterscheidet jetzt zwischen `aktiv`, `inaktiv` und `nicht konfiguriert`.
+- Kernel-Policy präzisiert: Ohne `*-updates` können Security-Kernelupdates weiterhin über `*-security` erlaubt sein.
